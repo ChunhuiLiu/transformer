@@ -82,7 +82,7 @@ def save_hparams(hparams, path):
     hparams as literal dictionary to path.
     '''
     if not os.path.exists(path): os.makedirs(path)
-    hp = json.dumps(vars(hparams))
+    hp = json.dumps(vars(hparams), indent=4)  # TODO 注意这里对vars()函数的使用
     with open(os.path.join(path, "hparams"), 'w') as fout:
         fout.write(hp)
 
@@ -140,7 +140,7 @@ def get_hypotheses(num_batches, num_samples, sess, tensor, dict):
     hypotheses: list of sents
     '''
     hypotheses = []
-    for _ in range(num_batches):
+    for _ in range(num_batches): # TODO 这里为什么要重复batch_size次？
         h = sess.run(tensor)
         hypotheses.extend(h.tolist())
     hypotheses = postprocess(hypotheses, dict)
@@ -162,8 +162,8 @@ def calc_bleu(ref, translation):
     try:
         score = re.findall("BLEU = ([^,]+)", bleu_score_report)[0]
         new_translation = translation + "B{}".format(score)
-        os.system("mv {} {}".format(translation, new_translation))
-        os.remove(translation)
+        os.system("mv {} {}".format(translation, new_translation))  # 改名
+        os.remove(translation)  # 删除原先 # 感觉好像没必要
 
     except: pass
     os.remove("temp")

@@ -27,8 +27,8 @@ def ln(inputs, epsilon = 1e-8, scope="ln"):
         mean, variance = tf.nn.moments(inputs, [-1], keep_dims=True)
         beta= tf.get_variable("beta", params_shape, initializer=tf.zeros_initializer())
         gamma = tf.get_variable("gamma", params_shape, initializer=tf.ones_initializer())
-        normalized = (inputs - mean) / ( (variance + epsilon) ** (.5) )
-        outputs = gamma * normalized + beta
+        normalized = (inputs - mean) / ( (variance + epsilon) ** (.5) )  # TODO 标准差放到分母上是逐元素进行运算吗
+        outputs = gamma * normalized + beta  # TODO 这里的乘积是Hadamard乘积，即逐元素乘积
         
     return outputs
 
@@ -37,7 +37,7 @@ def get_token_embeddings(vocab_size, num_units, zero_pad=True):
     Note that the column of index 0's are set to zeros.
     vocab_size: scalar. V.
     num_units: embedding dimensionalty. E.
-    zero_pad: Boolean. If True, all the values of the first row (id = 0) should be constant zero
+    zero_pad: Boolean. If True, all the values of the first row (id = 0) should be constant zero  # TODO 为什么要这么做？
     To apply query/key masks easily, zero pad is turned on.
 
     Returns
@@ -50,7 +50,7 @@ def get_token_embeddings(vocab_size, num_units, zero_pad=True):
                                    initializer=tf.contrib.layers.xavier_initializer())
         if zero_pad:
             embeddings = tf.concat((tf.zeros(shape=[1, num_units]),
-                                    embeddings[1:, :]), 0)
+                                    embeddings[1:, :]), 0)  # TODO 注意这里的矩阵选择操作
     return embeddings
 
 def scaled_dot_product_attention(Q, K, V, key_masks,
@@ -71,7 +71,7 @@ def scaled_dot_product_attention(Q, K, V, key_masks,
         d_k = Q.get_shape().as_list()[-1]
 
         # dot product
-        outputs = tf.matmul(Q, tf.transpose(K, [0, 2, 1]))  # (N, T_q, T_k)
+        outputs = tf.matmul(Q, tf.transpose(K, [0, 2, 1]))  # (N, T_q, T_k) # TODO 三维的相乘，0维点乘，1,2维矩阵相乘
 
         # scale
         outputs /= d_k ** 0.5
@@ -100,34 +100,38 @@ def scaled_dot_product_attention(Q, K, V, key_masks,
     return outputs
 
 
-def mask(inputs, key_masks=None, type=None):
+def  mask(inputs, key_masks=None, type=None):
     """Masks paddings on keys or queries to inputs
     inputs: 3d tensor. (h*N, T_q, T_k)
     key_masks: 3d tensor. (N, 1, T_k)
     type: string. "key" | "future"
 
     e.g.,
-    >> inputs = tf.zeros([2, 2, 3], dtype=tf.float32)
-    >> key_masks = tf.constant([[0., 0., 1.],
+    >> inputs = tf.zeros([2*2, 3, 3], dtype=tf.float32) (batch_size*head_num,word_num,word_num)
+    >> key_masks = tf.constant([[0., 0., 1.],   # 2*3(batch_size*word_num)
                                 [0., 1., 1.]])
     >> mask(inputs, key_masks=key_masks, type="key")
-    array([[[ 0.0000000e+00,  0.0000000e+00, -4.2949673e+09],
-        [ 0.0000000e+00,  0.0000000e+00, -4.2949673e+09]],
+    array([[[ 0.0000000e+00,  0.0000000e+00, -4.2949673e+09],# word1对key3的得分赋值为最小 # 因为key3对应的word3是<pad>
+        [ 0.0000000e+00,  0.0000000e+00, -4.2949673e+09] # word2对key3的得分赋值为最小
+        [ 0.0000000e+00,  0.0000000e+00, -4.2949673e+09]],# word3对key3的得分赋值为最小
 
        [[ 0.0000000e+00, -4.2949673e+09, -4.2949673e+09],
+        [ 0.0000000e+00, -4.2949673e+09, -4.2949673e+09],
         [ 0.0000000e+00, -4.2949673e+09, -4.2949673e+09]],
 
        [[ 0.0000000e+00,  0.0000000e+00, -4.2949673e+09],
+        [ 0.0000000e+00,  0.0000000e+00, -4.2949673e+09],
         [ 0.0000000e+00,  0.0000000e+00, -4.2949673e+09]],
 
        [[ 0.0000000e+00, -4.2949673e+09, -4.2949673e+09],
+        [ 0.0000000e+00, -4.2949673e+09, -4.2949673e+09],
         [ 0.0000000e+00, -4.2949673e+09, -4.2949673e+09]]], dtype=float32)
     """
     padding_num = -2 ** 32 + 1
     if type in ("k", "key", "keys"):
         key_masks = tf.to_float(key_masks)
         key_masks = tf.tile(key_masks, [tf.shape(inputs)[0] // tf.shape(key_masks)[0], 1]) # (h*N, seqlen)
-        key_masks = tf.expand_dims(key_masks, 1)  # (h*N, 1, seqlen)
+        key_masks = tf.expand_dims(key_masks, 1)  # (h*N, 1, seqlen)  # TODO 这里为什么添加一个维度为1的二维
         outputs = inputs + key_masks * padding_num
     # elif type in ("q", "query", "queries"):
     #     # Generate masks
@@ -138,7 +142,7 @@ def mask(inputs, key_masks=None, type=None):
     #     # Apply masks to inputs
     #     outputs = inputs*masks
     elif type in ("f", "future", "right"):
-        diag_vals = tf.ones_like(inputs[0, :, :])  # (T_q, T_k)
+        diag_vals = tf.ones_like(inputs[0, :, :])  # (T_q, T_k) # TODO 注意0维是索引，其他维度是切片
         tril = tf.linalg.LinearOperatorLowerTriangular(diag_vals).to_dense()  # (T_q, T_k)
         future_masks = tf.tile(tf.expand_dims(tril, 0), [tf.shape(inputs)[0], 1, 1])  # (N, T_q, T_k)
 
@@ -173,7 +177,7 @@ def multihead_attention(queries, keys, values, key_masks,
     d_model = queries.get_shape().as_list()[-1]
     with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
         # Linear projections
-        Q = tf.layers.dense(queries, d_model, use_bias=True) # (N, T_q, d_model)
+        Q = tf.layers.dense(queries, d_model, use_bias=True) # (N, T_q, d_model) # TODO 这样计算多头还能并行吗
         K = tf.layers.dense(keys, d_model, use_bias=True) # (N, T_k, d_model)
         V = tf.layers.dense(values, d_model, use_bias=True) # (N, T_k, d_model)
         
@@ -221,7 +225,7 @@ def ff(inputs, num_units, scope="positionwise_feedforward"):
     
     return outputs
 
-def label_smoothing(inputs, epsilon=0.1):
+def label_smoothing(inputs, epsilon=0.1):  # TODO 为什么要进行这种处理？
     '''Applies label smoothing. See 5.4 and https://arxiv.org/abs/1512.00567.
     inputs: 3d tensor. [N, T, V], where V is the number of vocabulary.
     epsilon: Smoothing rate.
@@ -270,15 +274,16 @@ def positional_encoding(inputs,
     3d tensor that has the same shape as inputs.
     '''
 
-    E = inputs.get_shape().as_list()[-1] # static
+    E = inputs.get_shape().as_list()[-1] # static # TODO 注意这两种获得tensor形状的方法
     N, T = tf.shape(inputs)[0], tf.shape(inputs)[1] # dynamic
     with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
         # position indices
-        position_ind = tf.tile(tf.expand_dims(tf.range(T), 0), [N, 1]) # (N, T)
+        position_ind = tf.tile(tf.expand_dims(tf.range(T), 0), [N, 1]) # (N, T)  # DONE 对于不同的N位置T的值不一样怎么办？也就是说，输入的batch中每个batch中的各个句子之间的长度不一样怎么办？
+        # 同一个batch句子长度统一
 
         # First part of the PE function: sin and cos argument
         position_enc = np.array([
-            [pos / np.power(10000, (i-i%2)/E) for i in range(E)]
+            [pos / np.power(10000, (i-i%2)/ E) for i in range(E)]
             for pos in range(maxlen)])
 
         # Second part, apply the cosine to even columns and sin to odds.
@@ -291,9 +296,9 @@ def positional_encoding(inputs,
 
         # masks
         if masking:
-            outputs = tf.where(tf.equal(inputs, 0), inputs, outputs)
+            outputs = tf.where(tf.equal(inputs, 0), inputs, outputs)  # TODO 这里有什么用？ outputs对应的inputs位置为0的地方为什么要等于inputs
 
-        return tf.to_float(outputs)
+        return tf.to_float(outputs)  # TODO 这里为什么要转换一下数据类型
 
 def noam_scheme(init_lr, global_step, warmup_steps=4000.):
     '''Noam scheme learning rate decay
@@ -303,4 +308,4 @@ def noam_scheme(init_lr, global_step, warmup_steps=4000.):
         until it reaches init_lr.
     '''
     step = tf.cast(global_step + 1, dtype=tf.float32)
-    return init_lr * warmup_steps ** 0.5 * tf.minimum(step * warmup_steps ** -1.5, step ** -0.5)
+    return init_lr * warmup_steps ** 0.5 * tf.minimum(step * warmup_steps ** -1.5, step ** -0.5)  # TODO 学习速率先小后大，到达init_lr之后然后再缓慢下降（几乎不变）是什么道理

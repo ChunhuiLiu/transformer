@@ -49,8 +49,11 @@ class Transformer:
             # embedding
             enc = tf.nn.embedding_lookup(self.embeddings, x) # (N, T1, d_model)
             enc *= self.hp.d_model**0.5 # scale
-
-            enc += positional_encoding(enc, self.hp.maxlen1)
+ 
+            if training:
+                enc += positional_encoding(enc, self.hp.maxlen1)
+            else:
+                enc += positional_encoding(enc, 1000)
             enc = tf.layers.dropout(enc, self.hp.dropout_rate, training=training)
 
             ## Blocks
@@ -91,7 +94,10 @@ class Transformer:
             dec = tf.nn.embedding_lookup(self.embeddings, decoder_inputs)  # (N, T2, d_model)
             dec *= self.hp.d_model ** 0.5  # scale
 
-            dec += positional_encoding(dec, self.hp.maxlen2)
+            if training:
+                dec += positional_encoding(dec, self.hp.maxlen2)
+            else:
+                dec += positional_encoding(dec, 1000)
             dec = tf.layers.dropout(dec, self.hp.dropout_rate, training=training)
 
             # Blocks
@@ -142,9 +148,9 @@ class Transformer:
 
         # train scheme
         y_ = label_smoothing(tf.one_hot(y, depth=self.hp.vocab_size))
-        ce = tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=y_)
+        ce = tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=y_)  # DONE ce的形状是什么样的？跟y形状相同，最后一维计算成标量了
         nonpadding = tf.to_float(tf.not_equal(y, self.token2idx["<pad>"]))  # 0: <pad>
-        loss = tf.reduce_sum(ce * nonpadding) / (tf.reduce_sum(nonpadding) + 1e-7)
+        loss = tf.reduce_sum(ce * nonpadding) / (tf.reduce_sum(nonpadding) + 1e-7)  # TODO 最后计算loss的时候，padding对应的输出不要了
 
         global_step = tf.train.get_or_create_global_step()
         lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
@@ -175,10 +181,10 @@ class Transformer:
         logging.info("Inference graph is being built. Please be patient.")
         for _ in tqdm(range(self.hp.maxlen2)):
             logits, y_hat, y, sents2 = self.decode(ys, memory, src_masks, False)
-            if tf.reduce_sum(y_hat, 1) == self.token2idx["<pad>"]: break
+            if tf.reduce_sum(y_hat, 1) == self.token2idx["<pad>"]: break  # TODO tf.reduce_sum(tensor,1)的结果是一维的，能和标量进行关系的比较吗？
 
             _decoder_inputs = tf.concat((decoder_inputs, y_hat), 1)
-            ys = (_decoder_inputs, y, y_seqlen, sents2)
+            ys = (_decoder_inputs, y, y_seqlen, sents2)  # TODO 这一次的输出当做下一次的输入，这是做啥呢？
 
         # monitor a random sample
         n = tf.random_uniform((), 0, tf.shape(y_hat)[0]-1, tf.int32)

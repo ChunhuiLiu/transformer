@@ -16,12 +16,12 @@ def load_vocab(vocab_fpath):
     '''Loads vocabulary file and returns idx<->token maps
     vocab_fpath: string. vocabulary file path.
     Note that these are reserved
-    0: <pad>, 1: <unk>, 2: <s>, 3: </s>
+    0: <pad>, 1: <unk>, 2: <s>, 3: </s> # TODO 这里提到的四种标记字符
 
     Returns
     two dictionaries.
     '''
-    vocab = [line.split()[0] for line in open(vocab_fpath, 'r').read().splitlines()]
+    vocab = [line.split()[0] for line in open(vocab_fpath, 'r', encoding='utf-8').read().splitlines()]  # TODO 注意这里的数据读取操作
     token2idx = {token: idx for idx, token in enumerate(vocab)}
     idx2token = {idx: token for idx, token in enumerate(vocab)}
     return token2idx, idx2token
@@ -38,9 +38,9 @@ def load_data(fpath1, fpath2, maxlen1, maxlen2):
     sents2: list of target sents
     '''
     sents1, sents2 = [], []
-    with open(fpath1, 'r') as f1, open(fpath2, 'r') as f2:
+    with open(fpath1, 'r', encoding='utf-8') as f1, open(fpath2, 'r', encoding='utf-8') as f2:  # TODO 注意这种写法
         for sent1, sent2 in zip(f1, f2):
-            if len(sent1.split()) + 1 > maxlen1: continue # 1: </s>
+            if len(sent1.split()) + 1 > maxlen1: continue # 1: </s> # TODO 这里长度加1干什么？
             if len(sent2.split()) + 1 > maxlen2: continue  # 1: </s>
             sents1.append(sent1.strip())
             sents2.append(sent2.strip())
@@ -56,11 +56,11 @@ def encode(inp, type, dict):
     Returns
     list of numbers
     '''
-    inp_str = inp.decode("utf-8")
+    inp_str = inp.decode("utf-8")  # TODO 这里的decode是什么？
     if type=="x": tokens = inp_str.split() + ["</s>"]
     else: tokens = ["<s>"] + inp_str.split() + ["</s>"]
 
-    x = [dict.get(t, dict["<unk>"]) for t in tokens]
+    x = [dict.get(t, dict["<unk>"]) for t in tokens]  # TODO 注意这里的字典的get操作，当t不是字典中的键时，返回后面的默认值
     return x
 
 def generator_fn(sents1, sents2, vocab_fpath):
@@ -99,7 +99,7 @@ def input_fn(sents1, sents2, vocab_fpath, batch_size, shuffle=False):
 
     Returns
     xs: tuple of
-        x: int32 tensor. (N, T1)
+        x: int32 tensor. (N, T1) # TODO 这里的T1是什么意思
         x_seqlens: int32 tensor. (N,)
         sents1: str tensor. (N,)
     ys: tuple of
@@ -109,23 +109,23 @@ def input_fn(sents1, sents2, vocab_fpath, batch_size, shuffle=False):
         sents2: str tensor. (N,)
     '''
     shapes = (([None], (), ()),
-              ([None], [None], (), ()))
+              ([None], [None], (), ()))  # TODO 这里对形状的描述上，为什么[]里面加None,而()不用
     types = ((tf.int32, tf.int32, tf.string),
              (tf.int32, tf.int32, tf.int32, tf.string))
     paddings = ((0, 0, ''),
                 (0, 0, 0, ''))
 
-    dataset = tf.data.Dataset.from_generator(
+    dataset = tf.data.Dataset.from_generator(  # TODO 注意这个数据处理函数的使用
         generator_fn,
         output_shapes=shapes,
         output_types=types,
         args=(sents1, sents2, vocab_fpath))  # <- arguments for generator_fn. converted to np string arrays
 
     if shuffle: # for training
-        dataset = dataset.shuffle(128*batch_size)
+        dataset = dataset.shuffle(128*batch_size)  # TODO 注意这三个对数据集的操作，包括下面的两个
 
     dataset = dataset.repeat()  # iterate forever
-    dataset = dataset.padded_batch(batch_size, shapes, paddings).prefetch(1)
+    dataset = dataset.padded_batch(batch_size, shapes, paddings).prefetch(1) # prefetch,取1组batch
 
     return dataset
 
@@ -144,7 +144,7 @@ def get_batch(fpath1, fpath2, maxlen1, maxlen2, vocab_fpath, batch_size, shuffle
     num_batches: number of mini-batches
     num_samples
     '''
-    sents1, sents2 = load_data(fpath1, fpath2, maxlen1, maxlen2)
+    sents1, sents2 = load_data(fpath1, fpath2, maxlen1, maxlen2)  # ['', '',...]，其中每个字符串表示的是训练文本的一行
     batches = input_fn(sents1, sents2, vocab_fpath, batch_size, shuffle=shuffle)
     num_batches = calc_num_batches(len(sents1), batch_size)
     return batches, num_batches, len(sents1)
